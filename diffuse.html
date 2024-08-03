@@ -1,0 +1,78 @@
+<!DOCTYPE html>
+<html lang="en">
+<!-- 
+Randomly read images from ./diffuse_img/{i}.png and draw them on canvas.
+Randomly swap 100 adjacent pixels at each frame.
+-->
+
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Diffuse</title>
+</head>
+
+<body>
+  <canvas id="canvas"></canvas>
+  <h2 id="fps">fps: _</h2>
+  <script>
+    const canvas = document.getElementById('canvas');
+    const ctx = canvas.getContext('2d');
+
+    const img = new Image();
+    const i = Math.floor(Math.random() * 4);
+    img.src = `./diffuse_img/3.jpg`;
+
+    img.onload = () => {
+      // canvas.width = img.width;
+      // canvas.height = img.height;
+      // scale the canvas to fit real ppi of device
+      canvas.width = img.width;
+      canvas.height = img.height;
+      canvas.style.width = `${img.width / window.devicePixelRatio}px`;
+      canvas.style.height = `${img.height / window.devicePixelRatio}px`;
+
+      ctx.drawImage(img, 0, 0);
+
+      const imgData = ctx.getImageData(0, 0, canvas.width, canvas.height);
+      const data = imgData.data;
+
+      const swap = (data, i, j) => {
+        const tmp = data.slice(i, i + 4);
+        data.copyWithin(i, j, j + 4);
+        data.set(tmp, j);
+      };
+
+      window.timestamp = [performance.now()];
+
+      const swapRandom = () => {
+        for (let i = 0; i < 10000; i++) {
+          const x = Math.floor(Math.random() * canvas.width);
+          const y = Math.floor(Math.random() * canvas.height);
+          const j = (y * canvas.width + x) * 4;
+          const dx = (Math.random() < 0.5 ? 50 : -50);
+          const dy = (Math.random() < 0.5 ? 43 : -43);
+          const x2 = (x + dx + canvas.width) % canvas.width;
+          const y2 = (y + dy + canvas.height) % canvas.height;
+          const i2 = (y2 * canvas.width + x2) * 4;
+          swap(data, j, i2);
+        }
+        ctx.putImageData(imgData, 0, 0);
+
+        window.timestamp.push(performance.now());
+        if (window.timestamp.length > 60) {
+          const fps = 60 * 1000 / (window.timestamp[window.timestamp.length - 1] - window.timestamp[window.timestamp.length - 60]);
+          document.getElementById('fps').innerText = `fps: ${Math.round(fps)}`;
+        }
+
+        requestAnimationFrame(swapRandom);        
+      };
+
+      swapRandom();
+    };
+
+  </script>
+
+
+</body>
+
+</html>

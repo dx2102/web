@@ -1,0 +1,120 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <title>DeepSeek翻译</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+</head>
+<body class="min-h-screen overflow-scroll flex flex-col">
+    <h1 class="bg-gray-100 p-3 flex gap-4">
+        <div class="text-2xl">
+            DeepSeek翻译
+        </div>
+        <button id="submit" onclick="translateAll()" class="
+                py-1 px-3 rounded-lg
+                bg-blue-300
+        ">翻译</button>
+    </h1>
+    <div class="min-h-full flex grow p-2 bg-gray-100">
+        <div>
+            <textarea id="input" placeholder="键入翻译。" class="
+                min-h-full resize-none p-2 text-lg focus:outline-none
+            ">Minecraft</textarea>
+        </div>
+        <!-- add a division line -->
+        <div class="p-0.5"></div>
+        <div class="grow bg-white text-lg">
+            <div class="p-2 text-blue-900 bg-white block border-b-4 border-gray-100">翻译：</div>
+            <div id="output"></div>
+        </div>
+    </div>
+    <script>
+
+        function translateAll() {
+            /*
+            Read text in #input, call language model, and write the translation result to #output.
+
+            The #input may be too long, so it is split into multiple parts, and written to different sections in #output
+            The split rule: 
+            Split whenever there is multiple number and a space in the beginning of a line, ie. \n\d+\s
+            */
+            const original = document.getElementById('input').value;
+            // const parts = original.split(/\n\d+\s/);
+            const parts = original.split(/\n\n/);
+
+            const output = document.getElementById('output');
+            output.innerHTML = '';
+
+            parts.forEach((part, index) => {
+                const targetId = `output-${index}`;
+                const cls = 'p-2 border-b-4 border-gray-100 ';
+
+                const div1 = document.createElement('div');
+                div1.className = cls + 'text-blue-900';
+                div1.innerText = part;
+                output.appendChild(div1);
+
+                const div2 = document.createElement('div');
+                div2.className = cls;
+                div2.id = targetId;
+                output.appendChild(div2);
+
+                translate(part, targetId);
+            });
+        }
+
+        function translate(original, targetId) {
+            const prompt = "请你把下面做中英翻译：\n\n" + original;
+            const url = 'https://api.deepseek.com/chat/completions';
+            const apiKey = 'sk-0a85344f9bee454c8f3b50772d00e963';
+            
+            fetch(url, {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                    'Authorization': `Bearer ${apiKey}`,
+                },
+                body: JSON.stringify({
+                    "model": "deepseek-chat",
+                    "messages": [
+                        {"role": "user", "content": prompt}
+                    ],
+                    "stream": true
+                })
+            })
+            .then(response => {
+                if (!response.ok) {
+                    throw new Error(`HTTP error! status: ${response.status}`);
+                }
+                return response.body;
+            })
+            .then(stream => {
+                const reader = stream.getReader();
+                const decoder = new TextDecoder();
+                let buffer = '';
+
+                reader.read().then(function process({ done, value }) {
+                    if (done) {
+                        return;
+                    }
+                    buffer += decoder.decode(value, { stream: true });
+                    const lines = buffer.split('\n');
+                    buffer = lines.pop();
+
+                    for (const line of lines) {
+                        if (line.startsWith('data: [DONE]')) {
+                            console.log('Stream finished');
+                            return;
+                        }
+                        if (line.trim() === '') continue;
+                        const json = JSON.parse(line.substring('data: '.length));
+                        document.getElementById(targetId).innerText += json.choices[0].delta.content;
+                    }
+
+                    return reader.read().then(process);
+                });
+            })
+        }
+    </script>
+</body>
+</html>
