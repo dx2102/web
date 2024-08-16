@@ -1,0 +1,211 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>chat-prob</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+</head>
+
+<body class="bg-gray-100">
+  <div class="p-6 min-h-screen mx-auto w-10/12 flex flex-col gap-2">
+    <h1 class="text-3xl font-bold text-center">chat-prob</h1>
+    <div id="chat-window" class="bg-white px-4 py-3 rounded-lg">
+      <!-- Messages will appear here -->
+    </div>
+    
+    <!-- Spacer -->
+    <div class="flex-1"></div>
+
+    <form id="chat-form" class="flex">
+      <textarea id="user-input"
+        class="flex-1 px-4 py-3 rounded-l-lg focus:outline-none"
+        placeholder="Type a message..."
+        rows="1"
+      ></textarea>
+      <button type="submit" class="bg-blue-500 text-white px-4 py-3 rounded-r-lg">Send</button>
+    </form>
+  </div>
+
+  <script>
+    const chatWindow = document.getElementById('chat-window');
+    const chatForm = document.getElementById('chat-form');
+    const userInput = document.getElementById('user-input');
+
+    let history = [];
+
+    userInput.focus();
+
+    let shiftPressed = false;
+    userInput.addEventListener('keydown', (e) => {
+      if (e.key === 'Shift') {
+        shiftPressed = true;
+      } else {
+        shiftPressed = false;
+      }
+    });
+    // when user used Shift + Enter, add a new line, adjust the height of the textarea
+    userInput.addEventListener('input', (e) => {
+      if (e.inputType === 'insertLineBreak' && !e.isComposing) {
+        chatForm.dispatchEvent(new Event('submit'));
+      }
+      const lines = e.target.value.split('\n').length;
+      e.target.rows = Math.min(5, lines);
+    });
+
+
+    async function fetchChatCompletion(message) {
+      history.push({ role: 'user', content: message });
+      const response = await fetch('https://api.deepseek.com/chat/completions', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': 'Bearer sk-e1ba46bb1f4547e4a84fc0c9a29b3ddd'  // Replace with your OpenAI API key
+        },
+        body: JSON.stringify({
+          model: 'deepseek-chat',  // Use the desired model
+          messages: history,
+          stream: true,
+          logprobs: true,
+          top_logprobs: 20,
+        })
+      });
+      history.push({ role: 'assistant', draftContent: [] });
+
+      const reader = response.body.getReader();
+      const decoder = new TextDecoder();
+      let buffer = '';
+      let tokens = [];
+
+      while (true) {
+        const { done, value } = await reader.read();
+        if (done) break;
+
+        buffer += decoder.decode(value, { stream: true });
+
+        let lines = buffer.split('\n');
+        buffer = lines.pop();  // Retain incomplete data in buffer
+
+        for (const line of lines) {
+          if (!line) {
+            continue
+          }
+          if (!line.startsWith('data: ')) {
+            throw new Error(`Line does not start with 'data: ': ${line}`);
+          }
+          if (line === 'data: [DONE]') {
+            continue
+          }
+          // console.log(line); // data: {"id":"dcad70e3c81f384c49b5bdfa1f336d75","object":"chat.completion.chunk","created":1723773908,"model":"deepseek-chat","system_fingerprint":"fp_7e0991cad4","choices":[{"index":0,"delta":{"content":"Hello"},"logprobs":{"content":[{"token":"Hello","logprob":-0.0,"bytes":[72,101,108,108,111],"top_logprobs":[{"token":"Hello","logprob":-0.0,"bytes":[72,101,108,108,111]},{"token":"Hi","logprob":-15.891548156738281,"bytes":[72,105]},{"token":"Hey","logprob":-32.061973571777344,"bytes":[72,101,121]},{"token":"hello","logprob":-38.118629455566406,"bytes":[104,101,108,108,111]},{"token":"你好","logprob":-38.23855209350586,"bytes":[228,189,160,229,165,189]},{"token":"H","logprob":-39.66363525390625,"bytes":[72]},{"token":" Hello","logprob":-40.08127975463867,"bytes":[32,72,101,108,108,111]},{"token":"Hall","logprob":-40.278778076171875,"bytes":[72,97,108,108]},{"token":"Hell","logprob":-40.5352668762207,"bytes":[72,101,108,108]},{"token":"How","logprob":-41.19221496582031,"bytes":[72,111,119]},{"token":"Hola","logprob":-41.602256774902344,"bytes":[72,111,108,97]},{"token":"<｜end▁of▁sentence｜>","logprob":-42.99746322631836,"bytes":[60,239,189,156,101,110,100,226,150,129,111,102,226,150,129,115,101,110,116,101,110,99,101,239,189,156,62]},{"token":"嗨","logprob":-43.461700439453125,"bytes":[229,151,168]},{"token":"I","logprob":-43.47596740722656,"bytes":[73]},{"token":"\"","logprob":-44.55720901489258,"bytes":[34]},{"token":"He","logprob":-45.235145568847656,"bytes":[72,101]},{"token":"hi","logprob":-45.275108337402344,"bytes":[104,105]},{"token":"HI","logprob":-45.8451042175293,"bytes":[72,73]},{"token":"Yes","logprob":-45.983516693115234,"bytes":[89,101,115]},{"token":"Welcome","logprob":-46.01614761352539,"bytes":[87,101,108,99,111,109,101]}]}]},"finish_reason":null}]}
+          const data = JSON.parse(line.slice(6));  // Remove 'data: ' prefix
+          const choice = data.choices[0];
+          /*
+          choice: 
+            delta: {content: "Hello"}
+            finish_reason: null
+            index: 0
+            logprobs: {content: Array}
+          */
+          if (!choice.delta.content) {
+              continue
+          }
+          const token = choice.delta.content;
+          const logprobs = choice.logprobs.content[0].top_logprobs;
+
+          const entropy = getEntropy(logprobs.map(({ logprob }) => logprob));
+          renderToken(token, entropy, logprobs);
+          history[history.length - 1].draftContent.push(token);
+        }
+      }
+
+      history[history.length - 1].content = history[history.length - 1].draftContent.join('');
+      delete history[history.length - 1].draftContent;
+    }
+
+    function getEntropy(logprobs) {
+      const entropy = logprobs.reduce((acc, logprob) => {
+        const prob = Math.exp(logprob);
+        return acc - prob * logprob;
+      }, 0);
+      return entropy;
+    }
+
+    function mix(a, b, ratio) {
+      return a * (1 - ratio) + b * ratio;
+    }
+
+    function renderToken(token, entropy, logprobs) {
+      const tokenElement = document.createElement('div');
+      tokenElement.className = 'inline whitespace-pre-wrap';
+      token.replace('\n', '<br>');
+      tokenElement.textContent = token;
+      
+      /* 
+      entropy is >= 0. When the token is almost certain, entropy is close to 0
+      uncertain tokens have higher entropy like 0.4
+      for top_logprobs: 20, max entropy is log(20, base=e), which is around 3
+      */
+      let score, sat, hue, bright;
+
+      score = Math.log10(entropy) / 8 + 1;
+      score = Math.min(1, Math.max(0, score));
+
+      hue = Math.random() * 360;
+      sat = 0;
+      bright = mix(100, 80, score);
+
+      const color = `hsl(${hue}, ${sat}%, ${bright}%)`;
+
+      tokenElement.style.backgroundColor = color;
+
+      // On hover, show the entropy, list token logprobs, highlight the actual selected token
+      tokenElement.addEventListener('mouseenter', () => {
+        // console.log(logprobs);
+        tokenElement.style.backgroundColor = 'lightblue';
+
+        const logprobsElement = document.createElement('div');
+        logprobsElement.className = 'absolute bg-white p-2 rounded-lg shadow border border-gray-200';
+        logprobsElement.textContent += `Entropy: ${entropy.toPrecision(4)}\n`;
+        logprobsElement.textContent += `Score: ${score.toPrecision(4)}\n`;
+        logprobsElement.textContent += `Color: ${color}\n`;
+        logprobsElement.textContent += `\n`;
+
+        logprobs.forEach(({ token, logprob }) => {
+          const prob = Math.exp(logprob).toPrecision(4);
+          logprobsElement.textContent += `${token}: ${prob}\n`;
+        });
+        tokenElement.appendChild(logprobsElement);
+      });
+
+      tokenElement.addEventListener('mouseleave', async () => {
+        tokenElement.removeChild(tokenElement.lastChild);
+        tokenElement.style.backgroundColor = color;
+      });
+      
+      const lastChild = chatWindow.lastChild; // The `Assistant: ` text
+      lastChild.appendChild(tokenElement);
+    }
+
+    chatForm.addEventListener('submit', async (e) => {
+      e.preventDefault();
+
+      const message = userInput.value;
+      userInput.value = '';
+      const userMessage = document.createElement('div');
+      userMessage.textContent = `User: ${message}`;
+      if (history.length > 0) {
+        chatWindow.innerHTML += `<div class="border-t border-gray-100 my-1"></div>`;
+      }
+      chatWindow.innerHTML += `<div class="whitespace-pre-wrap"></div>`;
+      chatWindow.lastChild.textContent = `User: ${message}`;
+
+      chatWindow.innerHTML += `<div class="border-t border-gray-100 my-1"></div>`;
+      chatWindow.innerHTML += `<div class="inline">Assistant: </div>`;
+      await fetchChatCompletion(message);
+
+    });
+  </script>
+</body>
+
+</html>

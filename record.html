@@ -1,0 +1,66 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>声音录制和播放</title>
+</head>
+<body>
+    <h1>声音录制和播放示例</h1>
+
+    <button id="startRecord">开始录音</button>
+    <button id="stopRecord" disabled>停止录音</button>
+    <button id="playSound" disabled>播放声音</button>
+    <button id="stopSound" disabled>停止播放</button>
+    <audio id="audioPlayback" controls></audio>
+
+    <script>
+        let mediaRecorder;
+        let recordedChunks = [];
+        const audioElement = document.getElementById('audioPlayback');
+        const startRecordButton = document.getElementById('startRecord');
+        const stopRecordButton = document.getElementById('stopRecord');
+        const playSoundButton = document.getElementById('playSound');
+        const stopSoundButton = document.getElementById('stopSound');
+
+        startRecordButton.addEventListener('click', async () => {
+            const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+            mediaRecorder = new MediaRecorder(stream);
+
+            mediaRecorder.ondataavailable = (event) => {
+                if (event.data.size > 0) {
+                    recordedChunks.push(event.data);
+                }
+            };
+
+            mediaRecorder.onstop = () => {
+                const blob = new Blob(recordedChunks, { type: 'audio/webm' });
+                recordedChunks = [];
+                audioElement.src = URL.createObjectURL(blob);
+                playSoundButton.disabled = false;
+            };
+
+            mediaRecorder.start();
+            startRecordButton.disabled = true;
+            stopRecordButton.disabled = false;
+        });
+
+        stopRecordButton.addEventListener('click', () => {
+            mediaRecorder.stop();
+            startRecordButton.disabled = false;
+            stopRecordButton.disabled = true;
+        });
+
+        playSoundButton.addEventListener('click', () => {
+            audioElement.play();
+            stopSoundButton.disabled = false;
+        });
+
+        stopSoundButton.addEventListener('click', () => {
+            audioElement.pause();
+            audioElement.currentTime = 0;
+            stopSoundButton.disabled = true;
+        });
+    </script>
+</body>
+</html>

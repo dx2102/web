@@ -1,0 +1,141 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Audio Recorder</title>
+  <link href="https://cdn.jsdelivr.net/npm/tailwindcss@2.2.19/dist/tailwind.min.css" rel="stylesheet">
+</head>
+
+<body class="bg-gray-100 flex flex-col gap-4 items-center justify-center h-screen w-screen">
+  <div class="gap-1 text-xl grid grid-cols-2 grid-rows-2">
+    <button id="startButton" class="bg-blue-500 text-white px-4 py-3 rounded-lg shadow-md">Start Recording</button>
+    <button id="stopButton"  class="bg-red-500 text-white px-4 py-3 rounded-lg shadow-md">End Recording</button>
+    <button id="playButton"  class="bg-green-500 text-white px-4 py-3 rounded-lg shadow-md">Play audio</button>
+    <button id="backwardsButton" class="bg-yellow-500 text-white px-4 py-3 rounded-lg shadow-md">Play backwards</button>
+  </div>
+  <div class="flex flex-col gap-2 grow">
+    <canvas id="waveform" class="bg-white shadow-md rounded grow"></canvas>
+    <canvas id="spectrogram" class="bg-white shadow-md rounded grow"></canvas>
+  </div>
+  <!-- audio -->
+  <audio id="audio" controls hidden></audio>
+  <script>
+    function get(name) {
+      return document.getElementById(name);
+    }
+    let audioContext, mediaRecorder, audioChunks = [];
+    
+    get('startButton').addEventListener('click', async () => {
+      audioContext = new (window.AudioContext || window.webkitAudioContext)();
+      const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+      mediaRecorder = new MediaRecorder(stream);
+      audioChunks = [];
+      mediaRecorder.ondataavailable = (e) => {
+        console.log('Data available');
+        audioChunks.push(e.data);
+      }
+      mediaRecorder.start();
+      console.log('Recording started');
+    });
+
+    get('stopButton').addEventListener('click', () => {
+      if (! mediaRecorder) {
+        return
+      }
+      mediaRecorder.stop();
+      mediaRecorder.onstop = async () => {
+        const audioBlob = new Blob(audioChunks);
+        const audioBuffer = await audioBlob.arrayBuffer();
+        const decodedAudio = await audioContext.decodeAudioData(audioBuffer);
+        visualizeAudio(decodedAudio);
+        console.log('Recording stopped');
+      };
+    });
+
+    get('playButton').addEventListener('click', () => {
+      console.log('Playing audio');
+      if (audioChunks.length == 0) {
+        return
+      }
+      const audioBlob = new Blob(audioChunks);
+      const audioUrl = URL.createObjectURL(audioBlob);
+      const audio = get('audio');
+      audio.src = audioUrl;
+      audio.play();
+    });
+
+    get('backwardsButton').addEventListener('click', async () => {
+      console.log('Playing audio backwards');
+      if (audioChunks.length == 0) {
+        return
+      }
+      const audioBlob = new Blob(audioChunks);
+      const audioBuffer = await audioBlob.arrayBuffer();
+      const decodedAudio = await audioContext.decodeAudioData(audioBuffer);
+      const reversedBuffer = audioContext.createBuffer(decodedAudio.numberOfChannels, decodedAudio.length, decodedAudio.sampleRate);
+      for (let i = 0; i < decodedAudio.numberOfChannels; i++) {
+        const channelData = decodedAudio.getChannelData(i);
+        const reversedChannelData = reversedBuffer.getChannelData(i);
+        for (let j = 0; j < channelData.length; j++) {
+          reversedChannelData[j] = channelData[channelData.length - j - 1];
+        }
+      }
+      const reversedAudioUrl = URL.createObjectURL(new Blob([audioBuffer]));
+      const reversedAudio = new Audio(reversedAudioUrl);
+      reversedAudio.play();
+    });
+
+    function getCanvas(name) {
+      const canvas = get(name);
+      const context = canvas.getContext('2d');
+
+      const width = window.innerWidth * 2 / 3;
+      const height = window.innerHeight / 3;
+      console.log(width, height);
+      // high DPI canvas
+      canvas.width *= window.devicePixelRatio;
+      canvas.height *= window.devicePixelRatio;
+      canvas.style.width = `${width}px`;
+      canvas.style.height = `${height}px`;
+      
+      context.strokeStyle = 'black';
+      context.beginPath();
+      context.moveTo(0, 0);
+      context.lineTo(canvas.width, canvas.height);
+      context.stroke();
+
+      return [canvas, context];
+    }
+
+    const [waveformCanvas, waveformContext] = getCanvas('waveform');
+    const [spectrogramCanvas, spectrogramContext] = getCanvas('spectrogram');
+
+    function visualizeAudio(buffer) {
+      const data = buffer.getChannelData(0);
+      const step = Math.ceil(data.length / waveformCanvas.width);
+      const amp = waveformCanvas.height / 2;
+
+      waveformContext.clearRect(0, 0, waveformCanvas.width, waveformCanvas.height);
+      waveformContext.beginPath();
+      waveformContext.moveTo(0, amp);
+      for (let i = 0; i < data.length; i += step) {
+        waveformContext.lineTo(i / step, amp + data[i] * amp);
+      }
+      waveformContext.stroke();
+
+      // For spectrogram, you'd typically use an FFT to analyze the frequency domain.
+      // Here we just draw the waveform again for simplicity.
+      spectrogramContext.clearRect(0, 0, spectrogramCanvas.width, spectrogramCanvas.height);
+      spectrogramContext.beginPath();
+      spectrogramContext.moveTo(0, amp);
+      for (let i = 0; i < data.length; i += step) {
+        spectrogramContext.lineTo(i / step, amp + data[i] * amp);
+      }
+      spectrogramContext.stroke();
+    }
+  </script>
+</body>
+
+</html>
