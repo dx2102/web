@@ -4,38 +4,80 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>Audio Recorder</title>
+  <title>Play Audio Backwards</title>
   <link href="https://cdn.jsdelivr.net/npm/tailwindcss@2.2.19/dist/tailwind.min.css" rel="stylesheet">
 </head>
 
 <body class="bg-gray-100 flex flex-col gap-4 items-center justify-center h-screen w-screen">
   <div class="gap-1 text-xl grid grid-cols-2 grid-rows-2">
-    <button id="startButton" class="bg-blue-500 text-white px-4 py-3 rounded-lg shadow-md">Start Recording</button>
-    <button id="stopButton"  class="bg-red-500 text-white px-4 py-3 rounded-lg shadow-md">End Recording</button>
-    <button id="playButton"  class="bg-green-500 text-white px-4 py-3 rounded-lg shadow-md">Play audio</button>
-    <button id="backwardsButton" class="bg-yellow-500 text-white px-4 py-3 rounded-lg shadow-md">Play backwards</button>
+    <button id="startButton" class="bg-blue-500 text-white px-4 py-3 rounded-lg shadow">Start Recording</button>
+    <button id="stopButton"  class="bg-red-500 text-white px-4 py-3 rounded-lg shadow">End Recording</button>
+    <button id="playButton"  class="bg-green-500 text-white px-4 py-3 rounded-lg shadow">Play audio</button>
+    <button id="backwardsButton" class="bg-yellow-500 text-white px-4 py-3 rounded-lg shadow">Play backwards</button>
   </div>
+  <!-- <audio id="audio1" controls src=""></audio> -->
+
   <div class="flex flex-col gap-2 grow">
-    <canvas id="waveform" class="bg-white shadow-md rounded grow"></canvas>
-    <canvas id="spectrogram" class="bg-white shadow-md rounded grow"></canvas>
+    <canvas id="waveform" class="bg-white"></canvas>
   </div>
   <!-- audio -->
-  <audio id="audio" controls hidden></audio>
   <script>
     function get(name) {
       return document.getElementById(name);
     }
-    let audioContext, mediaRecorder, audioChunks = [];
+
+    function sleep(ms) {
+      return new Promise(resolve => setTimeout(resolve, ms));
+    }
+
+    const audioContext = new (window.AudioContext || window.webkitAudioContext)();
+    let mediaStream = null; // needs to be initialized in user event, eg. click
+    let mediaRecorder = null;
+    let audioChunks = []; // pieces of audio file data
+    let audioBuffer = null;
+    let reversedBuffer = null;
+    let audioFormat = null;
     
     get('startButton').addEventListener('click', async () => {
-      audioContext = new (window.AudioContext || window.webkitAudioContext)();
-      const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
-      mediaRecorder = new MediaRecorder(stream);
+      mediaStream = await navigator.mediaDevices.getUserMedia({ audio: true });
+      mediaRecorder = new MediaRecorder(mediaStream);
       audioChunks = [];
       mediaRecorder.ondataavailable = (e) => {
         console.log('Data available');
         audioChunks.push(e.data);
+        console.log('Audio file format:', e.data.type);
+        audioFormat = e.data.type;
       }
+
+      mediaRecorder.onstop = async () => {
+        console.log('Recording stopped');
+
+        console.log(audioChunks);
+        
+        // concat audio file data
+        const blob = new Blob(audioChunks, { type: audioFormat });
+        // turn blob into array buffer
+        const arrayBuffer = await blob.arrayBuffer();
+        // decode the result audio file, into array of sample points
+        audioBuffer = await audioContext.decodeAudioData(arrayBuffer);
+        visualizeAudio(Array.from(audioBuffer.getChannelData(0)));
+
+        // get('audio1').src = URL.createObjectURL(blob);
+        // console.log(get('audio1').src);
+
+        await sleep(1);
+
+        // reverse the audio
+        reversedBuffer = audioContext.createBuffer(audioBuffer.numberOfChannels, audioBuffer.length, audioBuffer.sampleRate);
+        for (let channel = 0; channel < audioBuffer.numberOfChannels; channel++) {
+          const data = audioBuffer.getChannelData(channel);
+          const reversedData = reversedBuffer.getChannelData(channel);
+          for (let i = 0; i < audioBuffer.length; i++) {
+            reversedData[i] = data[audioBuffer.length - i - 1];
+          }
+        }
+
+      };
       mediaRecorder.start();
       console.log('Recording started');
     });
@@ -44,59 +86,44 @@
       if (! mediaRecorder) {
         return
       }
-      mediaRecorder.stop();
-      mediaRecorder.onstop = async () => {
-        const audioBlob = new Blob(audioChunks);
-        const audioBuffer = await audioBlob.arrayBuffer();
-        const decodedAudio = await audioContext.decodeAudioData(audioBuffer);
-        visualizeAudio(decodedAudio);
-        console.log('Recording stopped');
-      };
+      mediaRecorder.stop(); // will trigger `mediaRecorder.ondatavailable`
+      mediaStream.getTracks().forEach(track => track.stop());
     });
 
     get('playButton').addEventListener('click', () => {
       console.log('Playing audio');
-      if (audioChunks.length == 0) {
-        return
-      }
-      const audioBlob = new Blob(audioChunks);
-      const audioUrl = URL.createObjectURL(audioBlob);
-      const audio = get('audio');
-      audio.src = audioUrl;
-      audio.play();
+      // get('audio1').play();
+      // play audioBuffer instead
+      const source = audioContext.createBufferSource();
+      source.buffer = audioBuffer;
+      source.connect(audioContext.destination);
+      source.start();
     });
 
     get('backwardsButton').addEventListener('click', async () => {
-      console.log('Playing audio backwards');
-      if (audioChunks.length == 0) {
-        return
+      if (! reversedBuffer) {
+        console.log('No reversed buffer');
+        return;
       }
-      const audioBlob = new Blob(audioChunks);
-      const audioBuffer = await audioBlob.arrayBuffer();
-      const decodedAudio = await audioContext.decodeAudioData(audioBuffer);
-      const reversedBuffer = audioContext.createBuffer(decodedAudio.numberOfChannels, decodedAudio.length, decodedAudio.sampleRate);
-      for (let i = 0; i < decodedAudio.numberOfChannels; i++) {
-        const channelData = decodedAudio.getChannelData(i);
-        const reversedChannelData = reversedBuffer.getChannelData(i);
-        for (let j = 0; j < channelData.length; j++) {
-          reversedChannelData[j] = channelData[channelData.length - j - 1];
-        }
-      }
-      const reversedAudioUrl = URL.createObjectURL(new Blob([audioBuffer]));
-      const reversedAudio = new Audio(reversedAudioUrl);
-      reversedAudio.play();
+      const source = audioContext.createBufferSource();
+      source.buffer = reversedBuffer;
+      source.connect(audioContext.destination);
+      source.start();
+      console.log('Playing reversed audio');
     });
 
     function getCanvas(name) {
       const canvas = get(name);
       const context = canvas.getContext('2d');
 
-      const width = window.innerWidth * 2 / 3;
-      const height = window.innerHeight / 3;
-      console.log(width, height);
+      let width = window.innerWidth / 5 * 4;
+      let height = window.innerHeight - 250;
+      width = Math.floor(width);
+      height = Math.floor(height);
+      console.log(width, height, window.devicePixelRatio);
       // high DPI canvas
-      canvas.width *= window.devicePixelRatio;
-      canvas.height *= window.devicePixelRatio;
+      canvas.width = width * window.devicePixelRatio;
+      canvas.height = height * window.devicePixelRatio;
       canvas.style.width = `${width}px`;
       canvas.style.height = `${height}px`;
       
@@ -109,31 +136,43 @@
       return [canvas, context];
     }
 
-    const [waveformCanvas, waveformContext] = getCanvas('waveform');
-    const [spectrogramCanvas, spectrogramContext] = getCanvas('spectrogram');
+    const [canvas1, ctx1] = getCanvas('waveform');
 
-    function visualizeAudio(buffer) {
-      const data = buffer.getChannelData(0);
-      const step = Math.ceil(data.length / waveformCanvas.width);
-      const amp = waveformCanvas.height / 2;
-
-      waveformContext.clearRect(0, 0, waveformCanvas.width, waveformCanvas.height);
-      waveformContext.beginPath();
-      waveformContext.moveTo(0, amp);
-      for (let i = 0; i < data.length; i += step) {
-        waveformContext.lineTo(i / step, amp + data[i] * amp);
+    function visualizeAudio(data) {
+      // data has much more elements than canvas1.width
+      // so we need to divide the data into chunks, each with length of step
+      let step = Math.ceil(data.length / canvas1.width);
+      if (step == 0) {
+        step = 1;
       }
-      waveformContext.stroke();
-
-      // For spectrogram, you'd typically use an FFT to analyze the frequency domain.
-      // Here we just draw the waveform again for simplicity.
-      spectrogramContext.clearRect(0, 0, spectrogramCanvas.width, spectrogramCanvas.height);
-      spectrogramContext.beginPath();
-      spectrogramContext.moveTo(0, amp);
-      for (let i = 0; i < data.length; i += step) {
-        spectrogramContext.lineTo(i / step, amp + data[i] * amp);
+      // we cannot use Math.max(...arr) because we would get stack overflow
+      let dataMax = data.map(x => Math.abs(x)).reduce((a, b) => Math.max(a, b));
+      // let h = canvas1.height / 2;
+      function scale(y) {
+        y /= dataMax; // y in [-1, 1]
+        y = (1 - y) / 2 
+        y *= canvas1.height;
+        y = Math.floor(y);
+        return y;
       }
-      spectrogramContext.stroke();
+
+      // console.log('Data length:', data.length);
+      // console.log('Canvas width:', canvas1.width);
+      // console.log('Step:', step);
+      // console.log('Max:', max);
+      window.ctx1 = ctx1;
+      
+      ctx1.fillStyle = 'white';
+      ctx1.fillRect(0, 0, canvas1.width, canvas1.height);
+
+      ctx1.fillStyle = 'black';
+      for (let x = 0; x * step < data.length; x++) {
+        let chunk = data.slice(x * step, (x + 1) * step);
+        let min = chunk.reduce((a, b) => Math.min(a, b));
+        let max = chunk.reduce((a, b) => Math.max(a, b));
+        ctx1.rect(x, scale(max), 1, scale(min) - scale(max) + 1);
+        ctx1.fill();
+      }
     }
   </script>
 </body>

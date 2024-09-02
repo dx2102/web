@@ -3,63 +3,63 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>声音录制和播放</title>
+    <title>录音和播放示例</title>
 </head>
 <body>
-    <h1>声音录制和播放示例</h1>
-
-    <button id="startRecord">开始录音</button>
-    <button id="stopRecord" disabled>停止录音</button>
-    <button id="playSound" disabled>播放声音</button>
-    <button id="stopSound" disabled>停止播放</button>
-    <audio id="audioPlayback" controls></audio>
+    <h1>录音和播放示例</h1>
+    <button id="start-recording">开始录音</button>
+    <button id="stop-recording" disabled>停止录音</button>
+    <button id="save-recording" disabled>保存录音</button>
+    <audio id="audio-player" controls></audio>
 
     <script>
+        const startButton = document.getElementById('start-recording');
+        const stopButton = document.getElementById('stop-recording');
+        const saveButton = document.getElementById('save-recording');
+        const audioPlayer = document.getElementById('audio-player');
         let mediaRecorder;
-        let recordedChunks = [];
-        const audioElement = document.getElementById('audioPlayback');
-        const startRecordButton = document.getElementById('startRecord');
-        const stopRecordButton = document.getElementById('stopRecord');
-        const playSoundButton = document.getElementById('playSound');
-        const stopSoundButton = document.getElementById('stopSound');
+        let audioChunks = [];
+        let mediaStream;
+        let audioBlob;
 
-        startRecordButton.addEventListener('click', async () => {
-            const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
-            mediaRecorder = new MediaRecorder(stream);
-
-            mediaRecorder.ondataavailable = (event) => {
-                if (event.data.size > 0) {
-                    recordedChunks.push(event.data);
-                }
+        startButton.addEventListener('click', async () => {
+            mediaStream = await navigator.mediaDevices.getUserMedia({ audio: true });
+            mediaRecorder = new MediaRecorder(mediaStream);
+            
+            mediaRecorder.ondataavailable = event => {
+                audioChunks.push(event.data);
             };
-
+            
             mediaRecorder.onstop = () => {
-                const blob = new Blob(recordedChunks, { type: 'audio/webm' });
-                recordedChunks = [];
-                audioElement.src = URL.createObjectURL(blob);
-                playSoundButton.disabled = false;
+                audioBlob = new Blob(audioChunks, { type: 'audio/wav' });
+                audioPlayer.src = URL.createObjectURL(audioBlob);
+                audioChunks = [];
+                saveButton.disabled = false; // 启用保存按钮
             };
-
+            
             mediaRecorder.start();
-            startRecordButton.disabled = true;
-            stopRecordButton.disabled = false;
+            startButton.disabled = true;
+            stopButton.disabled = false;
         });
 
-        stopRecordButton.addEventListener('click', () => {
+        stopButton.addEventListener('click', () => {
             mediaRecorder.stop();
-            startRecordButton.disabled = false;
-            stopRecordButton.disabled = true;
+            mediaStream.getTracks().forEach(track => track.stop()); // 关闭所有媒体流的轨道
+            startButton.disabled = false;
+            stopButton.disabled = true;
         });
 
-        playSoundButton.addEventListener('click', () => {
-            audioElement.play();
-            stopSoundButton.disabled = false;
-        });
-
-        stopSoundButton.addEventListener('click', () => {
-            audioElement.pause();
-            audioElement.currentTime = 0;
-            stopSoundButton.disabled = true;
+        saveButton.addEventListener('click', () => {
+            if (audioBlob) {
+                const url = URL.createObjectURL(audioBlob);
+                const a = document.createElement('a');
+                a.href = url;
+                a.download = 'recording.wav'; // 保存文件的名称
+                document.body.appendChild(a);
+                a.click();
+                document.body.removeChild(a);
+                URL.revokeObjectURL(url); // 释放 URL 对象
+            }
         });
     </script>
 </body>
