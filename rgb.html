@@ -9,7 +9,7 @@
   <link href="https://cdn.jsdelivr.net/npm/tailwindcss@2.2.19/dist/tailwind.min.css" rel="stylesheet">
 </head>
 
-<body>
+<body class="overflow-hidden">
   <canvas id="canvas"></canvas>
   <script>
     // visualize how a mix of rgb blocks looks like another color.
@@ -29,19 +29,37 @@
     width *= window.devicePixelRatio;
     height *= window.devicePixelRatio;
 
-    let mouseX = 100;
-    let prevX = 100;
+    let mouseX = width;
+    let prevX = width;
     
     canvas.addEventListener('mousemove', (e) => {
       prevX = mouseX;
       mouseX = e.clientX;
     });
+    canvas.addEventListener('touchmove', (e) => {
+      prevX = mouseX;
+      mouseX = e.touches
+        ? e.touches[0].clientX
+        : e.changedTouches[0].clientX;
+    });
+    canvas.addEventListener('touchstart', (e) => {
+      prevX = mouseX;
+      mouseX = e.touches
+        ? e.touches[0].clientX
+        : e.changedTouches[0].clientX;
+    });
 
     function draw() {
       requestAnimationFrame(draw)
       
-      const size = Math.floor(mouseX / 5) + 1;
-      const prevSize = Math.floor(prevX / 5) + 1;
+      let size = mouseX / 5;
+      if (size < 100) {
+        size = Math.floor(size) + 1;
+      }
+      let prevSize = prevX / 5;
+      if (prevSize < 100) {
+        prevSize = Math.floor(prevSize) + 1;
+      }
 
       // console.log(size, prevSize);
       ctx.fillStyle = 'white';
