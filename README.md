@@ -15,3 +15,6 @@ https://dx2102.github.io/web/swap_torus
 
 https://dx2102.github.io/web/reverse_audio
 
+### Observe how a mix of rgb (red/green/blue) blocks looks like another color.
+
+https://dx2102.github.io/web/rgb

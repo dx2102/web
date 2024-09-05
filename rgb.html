@@ -1,0 +1,79 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Color Mixing with Canvas</title>
+  <!-- tailwind -->
+  <link href="https://cdn.jsdelivr.net/npm/tailwindcss@2.2.19/dist/tailwind.min.css" rel="stylesheet">
+</head>
+
+<body>
+  <canvas id="canvas"></canvas>
+  <script>
+    // visualize how a mix of rgb blocks looks like another color.
+    const canvas = document.getElementById('canvas');
+    const ctx = canvas.getContext('2d');
+
+    let width = window.innerWidth;
+    let height = window.innerHeight;
+    width = Math.floor(width);
+    height = Math.floor(height);
+    console.log(width, height, window.devicePixelRatio);
+
+    canvas.width = width * window.devicePixelRatio;
+    canvas.height = height * window.devicePixelRatio;
+    canvas.style.width = `${width}px`;
+    canvas.style.height = `${height}px`;
+    width *= window.devicePixelRatio;
+    height *= window.devicePixelRatio;
+
+    let mouseX = 100;
+    let prevX = 100;
+    
+    canvas.addEventListener('mousemove', (e) => {
+      prevX = mouseX;
+      mouseX = e.clientX;
+    });
+
+    function draw() {
+      requestAnimationFrame(draw)
+      
+      const size = Math.floor(mouseX / 5) + 1;
+      const prevSize = Math.floor(prevX / 5) + 1;
+
+      // console.log(size, prevSize);
+      ctx.fillStyle = 'white';
+      ctx.fillRect(0, 0, width, height);
+
+      for (let x = 0; x < width + size; x += size * 2) {
+        for (let y = 0; y < height + size; y += size * 3) {
+          /*
+          rg
+          br
+          gb
+          */
+          ctx.fillStyle = 'rgb(255, 0, 0)';
+          ctx.fillRect(x + 0 * size, y + 0 * size, size, size);
+          ctx.fillStyle = 'rgb(0, 255, 0)';
+          ctx.fillRect(x + 1 * size, y + 0 * size, size, size);
+          ctx.fillStyle = 'rgb(0, 0, 255)';
+          ctx.fillRect(x + 0 * size, y + 1 * size, size, size);
+          ctx.fillStyle = 'rgb(255, 255, 0)';
+          ctx.fillRect(x + 1 * size, y + 1 * size, size, size);
+          ctx.fillStyle = 'rgb(0, 255, 255)';
+          ctx.fillRect(x + 0 * size, y + 2 * size, size, size);
+          ctx.fillStyle = 'rgb(255, 0, 255)';
+          ctx.fillRect(x + 1 * size, y + 2 * size, size, size);
+        }
+      }
+    }
+
+    draw();
+
+    
+  </script>
+</body>
+
+</html>
