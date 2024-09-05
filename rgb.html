@@ -37,16 +37,22 @@
       mouseX = e.clientX;
     });
     canvas.addEventListener('touchmove', (e) => {
+      // prevent user from zooming in/out
+      e.preventDefault();
       prevX = mouseX;
       mouseX = e.touches
         ? e.touches[0].clientX
         : e.changedTouches[0].clientX;
     });
     canvas.addEventListener('touchstart', (e) => {
+      e.preventDefault();
       prevX = mouseX;
       mouseX = e.touches
         ? e.touches[0].clientX
         : e.changedTouches[0].clientX;
+    });
+    canvas.addEventListener('touchend', (e) => {
+      e.preventDefault();
     });
 
     function draw() {
