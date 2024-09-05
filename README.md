@@ -13,5 +13,5 @@ https://dx2102.github.io/web/swap_torus
 
 ### Record your voice and play it backwards
 
-https://dx2102.github.io/web/reverse_audio2
+https://dx2102.github.io/web/reverse_audio
 
