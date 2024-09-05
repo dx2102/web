@@ -1,7 +1,17 @@
-# web
-Some static html websites I made
+
+
+Here are some single-file static html websites I made.
+
+These files are all kept fairly short. 
+Some of them involve 
+HTML canvas animations, three.js 3D animations, audios, and so on.
+I generally uses tailwindcss to specify styles.
+
+### Swapping the inner and outer ring of a Torus
 
 https://dx2102.github.io/web/swap_torus
 
-https://dx2102.github.io/web/reverse_audio
+### Record your voice and play it backwards
+
+https://dx2102.github.io/web/reverse_audio2
 
