@@ -30,86 +30,87 @@
       return new Promise(resolve => setTimeout(resolve, ms));
     }
 
-    const audioContext = new (window.AudioContext || window.webkitAudioContext)();
-    let mediaStream = null; // needs to be initialized in user event, eg. click
-    let mediaRecorder = null;
-    let audioChunks = []; // pieces of audio file data
-    let audioBuffer = null;
-    let reversedBuffer = null;
-    let audioFormat = null;
+    // audioContext is destroyed when recording stops, and recreated when playing and recording again
+    let audioContext = null;
+    // This needs to be initialized in user event, eg. click, to ask for permission to use microphone
+    // We also needs this global var to stop recording
+    let mediaStream = null; 
+    let sampleChunks = []; // pieces of audio file data appended when recording
+    let samples = null; // concatenated AudioBuffer when recording stops
+    let reversedSamples = null; // calculated AudioBuffer when recording stops
     
     get('startButton').addEventListener('click', async () => {
+      audioContext = new (window.AudioContext || window.webkitAudioContext)();
       mediaStream = await navigator.mediaDevices.getUserMedia({ audio: true });
-      mediaRecorder = new MediaRecorder(mediaStream);
-      audioChunks = [];
-      mediaRecorder.ondataavailable = (e) => {
-        console.log('Data available');
-        audioChunks.push(e.data);
-        console.log('Audio file format:', e.data.type);
-        audioFormat = e.data.type;
+      const source = audioContext.createMediaStreamSource(mediaStream);
+      const processor = audioContext.createScriptProcessor(4096, 2, 1);
+      sampleChunks = [];
+
+      // to stop recording: mediaStream.getTracks().forEach(track => track.stop());
+      processor.onaudioprocess = (e) => {
+        const chunk = e.inputBuffer;
+        // we need to copy the data, because the buffer is reused
+        const chunkCopy = [new Float32Array(chunk.getChannelData(0)), new Float32Array(chunk.getChannelData(1))];
+        sampleChunks.push(chunkCopy);
       }
+      const silentNode = audioContext.createGain();
+      silentNode.gain.value = 0;
 
-      mediaRecorder.onstop = async () => {
-        console.log('Recording stopped');
-
-        console.log(audioChunks);
-        
-        // concat audio file data
-        const blob = new Blob(audioChunks, { type: audioFormat });
-        // turn blob into array buffer
-        const arrayBuffer = await blob.arrayBuffer();
-        // decode the result audio file, into array of sample points
-        audioBuffer = await audioContext.decodeAudioData(arrayBuffer);
-        visualizeAudio(Array.from(audioBuffer.getChannelData(0)));
-
-        // get('audio1').src = URL.createObjectURL(blob);
-        // console.log(get('audio1').src);
-
-        await sleep(1);
-
-        // reverse the audio
-        reversedBuffer = audioContext.createBuffer(audioBuffer.numberOfChannels, audioBuffer.length, audioBuffer.sampleRate);
-        for (let channel = 0; channel < audioBuffer.numberOfChannels; channel++) {
-          const data = audioBuffer.getChannelData(channel);
-          const reversedData = reversedBuffer.getChannelData(channel);
-          for (let i = 0; i < audioBuffer.length; i++) {
-            reversedData[i] = data[audioBuffer.length - i - 1];
-          }
-        }
-
-      };
-      mediaRecorder.start();
-      console.log('Recording started');
+      source.connect(processor);
+      // to avoid garbage collection:
+      processor.connect(silentNode);
+      silentNode.connect(audioContext.destination);
     });
 
-    get('stopButton').addEventListener('click', () => {
-      if (! mediaRecorder) {
+    get('stopButton').addEventListener('click', async () => {
+      if (! mediaStream) {
         return
       }
-      mediaRecorder.stop(); // will trigger `mediaRecorder.ondatavailable`
       mediaStream.getTracks().forEach(track => track.stop());
+      audioContext.close();
+
+      await sleep(1);
+
+      const length = sampleChunks.reduce((acc, chunk) => acc + chunk[0].length, 0);
+      samples = audioContext.createBuffer(2, length, audioContext.sampleRate);
+      let offset = 0;
+      for (let chunk of sampleChunks) {
+        samples.copyToChannel(chunk[0], 0, offset);
+        samples.copyToChannel(chunk[1], 1, offset);
+        offset += chunk[0].length;
+      }
+
+      visualizeAudio(Array.from(samples.getChannelData(0)));
+
+      offset = length;
+      const reversedLeft = new Float32Array(length);
+      const reversedRight = new Float32Array(length);
+      for (let chunk of sampleChunks) {
+        for (i in chunk[0]) {
+          offset--;
+          reversedLeft[offset] = chunk[0][i];
+          reversedRight[offset] = chunk[1][i];
+        }
+      }
+      reversedSamples = audioContext.createBuffer(2, length, audioContext.sampleRate);
+      reversedSamples.copyToChannel(reversedLeft, 0);
+      reversedSamples.copyToChannel(reversedRight, 1);
     });
 
     get('playButton').addEventListener('click', () => {
-      console.log('Playing audio');
-      // get('audio1').play();
-      // play audioBuffer instead
+      audioContext = new (window.AudioContext || window.webkitAudioContext)();
       const source = audioContext.createBufferSource();
-      source.buffer = audioBuffer;
+      source.buffer = samples;
       source.connect(audioContext.destination);
       source.start();
     });
 
-    get('backwardsButton').addEventListener('click', async () => {
-      if (! reversedBuffer) {
-        console.log('No reversed buffer');
-        return;
-      }
+    get('backwardsButton').addEventListener('click', () => {
+      audioContext = new (window.AudioContext || window.webkitAudioContext)();
       const source = audioContext.createBufferSource();
-      source.buffer = reversedBuffer;
+      source.buffer = reversedSamples;
       source.connect(audioContext.destination);
       source.start();
-      console.log('Playing reversed audio');
     });
 
     function getCanvas(name) {
@@ -136,11 +137,13 @@
       return [canvas, context];
     }
 
-    const [canvas1, ctx1] = getCanvas('waveform');
+    getCanvas('waveform')
 
     function visualizeAudio(data) {
       // data has much more elements than canvas1.width
       // so we need to divide the data into chunks, each with length of step
+      const [canvas1, ctx1] = getCanvas('waveform');
+
       let step = Math.ceil(data.length / canvas1.width);
       if (step == 0) {
         step = 1;
@@ -162,8 +165,7 @@
       // console.log('Max:', max);
       window.ctx1 = ctx1;
       
-      ctx1.fillStyle = 'white';
-      ctx1.fillRect(0, 0, canvas1.width, canvas1.height);
+      ctx1.clearRect(0, 0, canvas1.width, canvas1.height);
 
       ctx1.fillStyle = 'black';
       for (let x = 0; x * step < data.length; x++) {
